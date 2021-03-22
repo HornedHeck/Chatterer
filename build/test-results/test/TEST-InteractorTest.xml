@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="InteractorTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2021-03-21T17:59:36" hostname="horned-rogstrixg531gtg531gt" time="0.059">
+  <properties/>
+  <testcase name="connectionTest()" classname="InteractorTest" time="0.059"/>
+  <system-out><![CDATA[Connected: User(name=Name-2, address=127.0.1.1)
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
