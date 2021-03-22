@@ -59,16 +59,25 @@ class MessageInteractor(private val remote : RemoteService) {
             content
         )
         CoroutineScope(Dispatchers.Default).launch {
-            val res = withContext(Dispatchers.IO) {
-                remote.send(message)
-            }
-            if (res.isSuccessful) {
-                messages.add(message)
-                messages.sortBy(Message::number)
-                callback(messages)
-            } else {
-                println("Cant send message")
-            }
+            proceedMessage(message, 5)
+        }
+    }
+
+    private suspend fun proceedMessage(message : Message, limit : Int) {
+        if (limit <= 0) {
+            println("Resend limit reached")
+            return
+        }
+        val res = withContext(Dispatchers.IO) {
+            remote.send(message)
+        }
+        if (res.isSuccessful) {
+            messages.add(message)
+            messages.sortBy(Message::number)
+            callback(messages)
+        } else {
+            println("Message error, retrying with limit: $limit")
+            proceedMessage(message, limit - 1)
         }
     }
 

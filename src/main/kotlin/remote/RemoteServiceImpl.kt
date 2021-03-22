@@ -7,8 +7,6 @@ import domain.User
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ReceiveChannel
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.withTimeout
 import java.net.DatagramPacket
 import java.net.DatagramSocket
@@ -39,12 +37,19 @@ class RemoteServiceImpl(private val port : Int = 8000, private val toPort : Int 
 //        No action
     }
 
+    private var expectedType = ""
+
     override suspend fun start(me : User) {
         val data = ByteArray(SIZE)
         val packet = DatagramPacket(data, data.size)
         while (true) {
-            socket.receive(packet)
-            val header = gson.fromJson(String(packet.data, 0, packet.length), DatagramHeader::class.java)
+            val header =
+                try {
+                    socket.receive(packet)
+                    gson.fromJson(String(packet.data, 0, packet.length), DatagramHeader::class.java)
+                } catch (e : Exception) {
+                    DatagramHeader("", expectedType, "")
+                }
             when {
                 header.isMessage() -> {
                     val message = gson.fromJson(header.content, Message::class.java)
@@ -71,13 +76,30 @@ class RemoteServiceImpl(private val port : Int = 8000, private val toPort : Int 
                     println("Internal: connection established")
                 }
                 header.isConnectResult() -> {
-                    val user = gson.fromJson(header.content, User::class.java)
-                    connectResultChannel.send(
-                        UDPResult(true, user)
-                    )
+                    if (header.content.isNotEmpty()) {
+                        val user = gson.fromJson(header.content, User::class.java)
+                        connectResultChannel.send(
+                            UDPResult(true, user)
+                        )
+                    } else {
+                        connectResultChannel.send(
+                            UDPResult(false, null)
+                        )
+                    }
                 }
                 header.isMessageResult() -> {
-                    messageResultChannel.send(gson.fromJson(header.content, UDPResult::class.java) as UDPResult<Long>)
+                    if (header.content.isNotEmpty()) {
+                        messageResultChannel.send(
+                            gson.fromJson(
+                                header.content,
+                                UDPResult::class.java
+                            ) as UDPResult<Long>
+                        )
+                    } else {
+                        messageResultChannel.send(
+                            UDPResult(false, null)
+                        )
+                    }
                 }
             }
         }
@@ -86,24 +108,25 @@ class RemoteServiceImpl(private val port : Int = 8000, private val toPort : Int 
     override suspend fun send(message : Message) : UDPResult<Long> {
         val header = DatagramHeader(message.from.address, MESSAGE, gson.toJson(message))
         val bytes = gson.toJson(header).toByteArray()
+        expectedType = MESSAGE_RES
         socket.send(
             DatagramPacket(
                 bytes, bytes.size, InetAddress.getByName(message.to.address), toPort
             )
         )
         return messageResultChannel
-            .receiveAsFlow()
-            .first { it.data == message.number }
+            .receive()
     }
 
     override suspend fun connect(to : String, me : User) : UDPResult<User> = try {
-        withTimeout(10000000) {
+        withTimeout(2000L) {
             val header = DatagramHeader(
                 me.address,
                 CONNECT,
                 gson.toJson(me)
             )
             val bytes = gson.toJson(header).toByteArray()
+            expectedType = CONNECT_RES
             socket.send(DatagramPacket(bytes, bytes.size, InetAddress.getByName(to), toPort))
             connectResultChannel.receive()
         }
